@@ -12,6 +12,8 @@ library(glmmTMB)
 library(emmeans)
 library(patchwork)
 
+getwd()
+
 #my ggplot theme
 theme_tess <- function () { 
   theme_cowplot()+
