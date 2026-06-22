@@ -1,0 +1,33 @@
+monthssinceheatwave,replicate,treatment,males,females
+3,p1,control,4,6
+3,p2,control,7,3
+3,p3,control,3,7
+3,p4,control,4,6
+3,p6,control,4,6
+3,p8,control,4,6
+3,p9,control,5,5
+3,p10,control,4,6
+3,p1,5 day,5,5
+3,p3,5 day,6,4
+3,p4,5 day,5,5
+3,p5,5 day,2,8
+3,p6,5 day,4,6
+3,p8,5 day,4,6
+3,p9,5 day,4,6
+3,p1,10 day,3,7
+3,p3,10 day,3,7
+3,p4,10 day,4,6
+3,p5,10 day,4,6
+3,p6,10 day,7,3
+3,p7,10 day,4,6
+3,p8,10 day,2,8
+3,p9,10 day,6,4
+3,p10,10 day,7,3
+3,p1,15 day,6,4
+3,p2,15 day,5,5
+3,p3,15 day,7,3
+3,p5,15 day,5,5
+3,p6,15 day,5,5
+3,p7,15 day,9,1
+3,p8,15 day,3,7
+3,p9,15 day,2,8
