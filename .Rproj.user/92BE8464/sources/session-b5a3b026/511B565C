@@ -3,7 +3,7 @@
     "path": "C:/Users/tgrainge/Dropbox/Guelph/Students/Undergrads/@Current undergrads/Emma Gruntz/Data and analysis/analysis.R",
     "project_path": "analysis.R",
     "type": "r_source",
-    "hash": "2949971337",
+    "hash": "0",
     "contents": "",
     "dirty": false,
     "created": 1782145286390.0,
@@ -12,15 +12,15 @@
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "490,18",
-        "scrollLine": "482"
+        "cursorPosition": "662,57",
+        "scrollLine": "685"
     },
     "folds": "",
-    "lastKnownWriteTime": 1782150217,
+    "lastKnownWriteTime": 1782490780,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1782150217628,
+    "last_content_update": 1782490780556,
     "read_only": false,
     "read_only_alternatives": []
 }

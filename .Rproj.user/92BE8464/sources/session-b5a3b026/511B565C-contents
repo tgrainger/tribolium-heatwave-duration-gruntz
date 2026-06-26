@@ -34,7 +34,7 @@ theme_tess_small <- function () {
     theme(plot.title = element_text(hjust = 0.5,size=10))+
     theme(axis.title.y=element_text(size=10))}
 
-# load and manipulate population size data
+# load and manipulate population size data, prep for gompertz model, calculate birth and death rates
 data <- read_csv("./population counts.csv") %>%
   mutate(ID = paste(treatment, replicate, sep = "_")) %>%
   group_by(ID) %>%
@@ -58,7 +58,7 @@ fec<-fec[complete.cases(fec),] #remove rows with NA for eggs
 
 ## prep for figure
 
-#get predicted values to add lines for gompertz model
+#get predicted values to add lines for Gompertz model
 
 gompertz_data <- data %>%
   arrange(treatment, ID, count) %>%
@@ -69,23 +69,27 @@ gompertz_data <- data %>%
          live > 0,
          live_lag1 > 0) #remove ones with zeros
 
-#fit gompertz model (linearize Ives et al. 2003 one)
-gompertz_lm <- lm(log(live / live_lag1) ~ log(live_lag1) * treatment,
+#fit gompertz model (linearized Ives et al. 2003 version)
+gompertz_lm <- lmer(log(live / live_lag1) ~ log(live_lag1) * treatment + (1|ID),
   data = gompertz_data)
 
 # get coefficients (intercept (a) and slope (b))
-coefs <- coef(gompertz_lm)
+coefs<- fixef(gompertz_lm)
 
-# a and b estimmates for each treatment
+# get a and b estimates for each treatment to add lines to plot
 gompertz_fits <- gompertz_data %>%
-  distinct(treatment) %>%
-  mutate(
+  dplyr::distinct(treatment) %>%
+  dplyr::mutate(
+    treatment = as.character(treatment),
+    treatment_term = paste0("treatment", treatment),
+    interaction_term = paste0("log(live_lag1):treatment", treatment),
     a = coefs["(Intercept)"] +
-      if_else(paste0("treatment", treatment) %in% names(coefs),
-        coefs[paste0("treatment", treatment)],0),
+      sapply(treatment_term, function(term) {
+        if (term %in% names(coefs)) coefs[term] else 0}),
     b = coefs["log(live_lag1)"] +
-      if_else(paste0("log(live_lag1):treatment", treatment) %in% names(coefs),
-        coefs[paste0("log(live_lag1):treatment", treatment)],0))
+      sapply(interaction_term, function(term) {
+        if (term %in% names(coefs)) coefs[term] else 0})) %>%
+  dplyr::select(treatment, a, b)
 
 #get starting N value for each treatment (N at count 1)
 start_N <- data %>%
@@ -94,12 +98,13 @@ start_N <- data %>%
   summarise(N0 = mean(live, na.rm = TRUE), .groups = "drop")
 
 #offsets to line up start and end of lines with points on plot
-offsets <- c("15 day"  = -0.225,
-            "10 day"  = -0.075,
-            "5 day"   =  0.075,
-            "control" =  0.225)
+offsets <- c(
+  "15 day"  =  0.225,
+  "10 day"  =  0.075,
+  "5 day"   = -0.075,
+  "control" = -0.225)
 
-# get Gompertz predictions
+# get gompertz predicted values
 gompertz_pred <- gompertz_fits %>%
   left_join(start_N, by = "treatment") %>%
   mutate(
@@ -127,6 +132,10 @@ live<-ggplot(data, aes(x = count, y = live, color=treatment)) +
                      labels=c("15 days", "10 days", "5 days", "Control"),
                      breaks = c("15 day","10 day","5 day","control"),
                      guide = guide_legend(reverse=TRUE))+
+  geom_line(data = gompertz_pred,
+            aes(x = x, y = fit, color = treatment, group = treatment),
+            linewidth = 0.9, alpha=0.7,
+            inherit.aes = FALSE)+
   expand_limits(y = 0)+
   xlab("") +
   ylab("Population size")+
@@ -136,20 +145,10 @@ live<-ggplot(data, aes(x = count, y = live, color=treatment)) +
   theme_tess()+
   theme(
   legend.text = element_text(size = 14),
-  legend.title = element_text(size = 16))+
-  geom_line(data = gompertz_pred,
-  aes(x = x, y = fit, color = treatment, group = treatment),
-  linewidth = 0.9, alpha=0.7,
-  inherit.aes = FALSE)
-  #theme(plot.margin = margin(15, 5, 5, 5))
+  legend.title = element_text(size = 16))
 
 legend <- get_legend(live)
 live  <- live   + theme(legend.position = "none")
-
-#windows();live
-
-ggsave(file="Figures/live beetles.pdf", live, 
-       width = 30, height = 21, units = "cm")
 
 ## Birth rate (panel b)
 
@@ -178,6 +177,7 @@ sig_df <- data.frame(
             "A","A","A","A", 
             "A","A","A","A"))
 
+#specify how high to put significance letters
 sig_df<-sig_df%>%
   mutate(count=as.integer(count),
           y_fixed = ifelse(row_number() <= 4, 11,
@@ -209,14 +209,14 @@ births_main<-ggplot(summary_data_births, aes(x = count, y = mean, color=treatmen
             vjust = 0,
             color="#d4791e") +
   theme_tess()+
-  theme(
-    legend.text = element_text(size = 14),
+  theme(legend.text = element_text(size = 14),
     legend.title = element_text(size = 16))
 
 births_main<-births_main+theme(legend.position = "none")
 
 #fecundity inset
 
+#treatment means
 summary_fec<-fec%>%
   group_by(treatment,monthssinceheatwave) %>%
   summarise(mean = mean(eggs),
@@ -224,6 +224,7 @@ summary_fec<-fec%>%
             sd = sd(eggs),
             se = sd / sqrt(n))
 
+#population means
 summary_fec_pops<-fec%>%
   group_by(treatment,monthssinceheatwave, replicate) %>%
   summarise(mean = mean(eggs),
@@ -231,21 +232,22 @@ summary_fec_pops<-fec%>%
             sd = sd(eggs),
             se = sd / sqrt(n))
 
-three<-fec%>%
-  filter(monthssinceheatwave==3)
-threesum<-summary_fec%>%
-  filter(monthssinceheatwave==3)
-threesumpops<-summary_fec_pops%>%
-  filter(monthssinceheatwave==3)
+#filter to month zero
+one<-fec%>%
+  filter(monthssinceheatwave==0)
+onesum<-summary_fec%>%
+  filter(monthssinceheatwave==0)
+onesumpops<-summary_fec_pops%>%
+  filter(monthssinceheatwave==0)
 
 sig_df <- data.frame(
   treatment = c("control","5 day", "10 day", "15 day"),
   label = c("A","A","AB","B"))%>%
-  mutate(y_fixed = c(9.6, 9.6, 9.6, 9.6))
+  mutate(y_fixed = c(7.5, 7.5, 7.5, 7.5))
 
-fecundityone<-ggplot(threesum, aes(x = treatment, y = mean, color=treatment)) +
+fecundityone<-ggplot(onesum, aes(x = treatment, y = mean, color=treatment)) +
   geom_point(size = 2.5,position = position_dodge(width = 0.6)) + #mean points
-  geom_point(data = threesumpops, aes(x=treatment,y = mean, color = treatment), #all points
+  geom_point(data = onesumpops, aes(x=treatment,y = mean, color = treatment), #all points
              position = position_dodge(width = 0.6), size = 1.5, alpha=0.5,shape=16) +
   scale_color_manual(values = c("#894400","#c46200", "#ffb56b", "#ffd1a1"), 
                      name = "Heatwave duration", 
@@ -258,6 +260,7 @@ fecundityone<-ggplot(threesum, aes(x = treatment, y = mean, color=treatment)) +
                 linewidth = 1.2) +
   scale_x_discrete(labels=c("15 days", "10 days", "5 days", "Control"),
                    breaks = c("15 day","10 day","5 day","control"))+
+  scale_y_continuous(limits=c(0,8))+
   geom_text(data = sig_df,
             aes(x = treatment, y = y_fixed, label = label, group = treatment),
             position = position_dodge(width = 0.6),
@@ -270,7 +273,7 @@ fecundityone<-ggplot(threesum, aes(x = treatment, y = mean, color=treatment)) +
   theme_tess_small()+
   theme(legend.position = "none")
 
-#windows();fecundityone
+windows();fecundityone
 
 births<-births_main + inset_element(fecundityone,
                 left = 0.5,
@@ -278,10 +281,6 @@ births<-births_main + inset_element(fecundityone,
                 right = 0.98,
                 top = 0.98)
   
-#windows();births
-
-ggsave(file="Figures/births.pdf", births, 
-       width = 30, height = 21, units = "cm")
 
 ## Death rate (panel c)
 
@@ -308,7 +307,7 @@ sig_df <- data.frame(
             "A","A","A","A",
             "A","A","A","A",
             "B","AB","A","AB", #the ordering is messed up here for some reason
-            "C", "B", "A", "AB")) #the ordering is messed up here for some reason
+            "B", "AB", "A", "A")) #the ordering is messed up here for some reason
 
 sig_df$count<-as.integer(sig_df$count)
 
@@ -350,10 +349,6 @@ dead<-ggplot(summary_data_dead, aes(x = count, y = mean, color=treatment)) +
   theme_tess()+
   theme(legend.position = "none")
 
-#windows();dead
-
-ggsave(file="Figures/dead beetles.pdf", 
-       dead, width = 30, height = 21, units = "cm")
 
 ##PUT ALL PLOTS TOGETHER
 
@@ -372,10 +367,12 @@ ggsave(file="Figures/Figure 1.pdf",
 #### POPULATION SIZE ANALYSIS ####
 
 # gompertz model
-gompertz_lm <- lm(log(live/live_lag1) ~ log(live_lag1)*treatment, data = data)
+gompertz_lm <- lmer(log(live / live_lag1) ~ log(live_lag1) * treatment + (1|ID),
+                    data = data)
 
 # logistic model
-logistic_lm <- lm(log(live/live_lag1) ~ live_lag1*treatment, data = data)
+logistic_lm <- lmer(log(live/live_lag1) ~ live_lag1*treatment +(1|ID), 
+                    data = data)
 
 AIC(gompertz_lm,logistic_lm) #gompertz better
 
@@ -410,10 +407,9 @@ params <- read_csv("params.csv") %>%
   mutate(unloggedK=exp(K),
          unloggeda=exp(a))#add columns with the unlogged K and a estimates
 
-#boxplot of effect of treatment on K
-# params %>%
-#   ggplot(aes(x = ftreatment, y = unloggedK)) +
-#   geom_boxplot() 
+means<-params%>%
+  group_by(treatment)%>%
+  mutate(meanK=mean(unloggedK))
 
 # linear model for K
 lm_K <- lm(unloggedK ~ ftreatment, data = params)
@@ -421,11 +417,6 @@ Anova(lm_K, type=2) #strong treatment effect
 
 emmeans(lm_K, pairwise ~ ftreatment, adjust = "tukey")
 #everything is different from one another except control vs 5 day and 10 vs 15 day (same result as before) (A A B B)
-
-#boxplot of effect of treatment on growth rate
-# params %>%
-#   ggplot(aes(x = ftreatment, y = unloggeda)) +
-#   geom_boxplot() 
 
 # linear model for a
 lm_a <- lm(a ~ ftreatment, data = params)
@@ -685,10 +676,10 @@ fecthree<-ggplot(threesum, aes(x = treatment, y = mean, color=treatment)) +
 
 ##PUT PLOTS TOGETHER for supp mat figure
 
-fecundity<-plot_grid(feczero,NULL, fecthree,
+fecundity<-plot_grid(fecone,NULL, fecthree,
                      align="v",ncol=3,rel_widths=c(1,0.1,1))
 
-ggsave(file="Figures/fecundity_zero_three.pdf",
+ggsave(file="Figures/Fig. S1 - fecundity.pdf",
        fecundity, width = 40, height = 20, units = "cm")
 
 ##Analysis
@@ -845,7 +836,7 @@ bodythree<-ggplot(threesum, aes(x = treatment, y = mean, color=treatment)) +
 
 #windows();bodythree
 
-ggsave(file="Figures/body size.pdf",
+ggsave(file="Figures/Fig. S2 - body size.pdf",
        bodythree, width = 40, height = 24, units = "cm")
 
 #Analysis
@@ -912,7 +903,7 @@ ratiosplot<-ggplot(summary_sex, aes(x = treatment, y = mean, color=treatment)) +
 
 #windows();ratiosplot
 
-ggsave(file="Figures/sex ratio.pdf",
+ggsave(file="Figures/Fig. S3 - sex ratio.pdf",
        ratiosplot, width = 20, height = 17, units = "cm")
 
 #analysis
